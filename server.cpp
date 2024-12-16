@@ -4,13 +4,17 @@
 #include <fstream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include "UI.h"
 
 #pragma comment(lib, "ws2_32.lib")
 
 using namespace std;
 
 #define PORT 8080           // Port for the proxy server
-#define BUFFER_SIZE 10000  // Size of the buffer for receiving data
+#define BUFFER_SIZE 10000  
+
+
+// get host and port from http/https request
 pair<string, int> get_Host_Port(string request) {
     string first_line = request.substr(0, request.find("\r\n"));
     string method = first_line.substr(0, first_line.find(" "));
@@ -37,45 +41,57 @@ pair<string, int> get_Host_Port(string request) {
     }
     return make_pair(host, port);
 }
+// check str1 is a substring of str2
 bool isSubstring(const string& str1, const string& str2) {
     return str2.find(str1) != string::npos;
 }
+// check a request in banned list or not
 bool checkBanList(const string &request, vector<string> ban) {
-    for(auto s: ban) {
+    for(auto s: ban) { 
         if (isSubstring(s, request)) return true;        
     }
     return false;
 }
+vector<string> readBanFile(const string &file) {
+    vector<string> ban;
+    ifstream fi(file);
+    string s;
+    while(getline(fi, s)) {
+        ban.push_back(s);
+    }
+    // fi.close();
+    return ban;
+}
+
 void handleClient(SOCKET clientSocket, vector<string> ban) {
     char buffer[BUFFER_SIZE];
     string request;
 
     int bytes_read = recv(clientSocket, buffer, BUFFER_SIZE, 0);
     if (bytes_read <= 0) {
-        cerr << "Failed to read from client.\n";
+        // cerr << "Failed to read from client.\n";
         return;
     }
     request = string(buffer, bytes_read);
-    cerr << "REQUEST: " << request << '\n';
-    if (checkBanList(request, ban)) return; // if request is in ban list
+    if (checkBanList(request, ban)) return; 
     auto [host, port] = get_Host_Port(request);
+    cerr << "HOST: " << host << endl;
+    cerr << "PORT: " << port << endl;
 
     // Create socket to target server
     SOCKET remoteSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (remoteSocket == INVALID_SOCKET) {
-        cerr << "Failed to create server socket, error: " << WSAGetLastError() << '\n';
+        // cerr << "Failed to create server socket, error: " << WSAGetLastError() << '\n';
         return;
     }
 
     struct hostent* he = gethostbyname(host.c_str());
     if (he == nullptr) {
-        cerr << "Host resolution failed!\n";
+        // cerr << "Host resolution failed!\n";
         closesocket(remoteSocket);
         return;
     }
     
-    // cerr << "HOST: " << host << "\nPORT: " << port << '\n';
-
     sockaddr_in server_addr{};
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
@@ -83,15 +99,15 @@ void handleClient(SOCKET clientSocket, vector<string> ban) {
 
     // Connect to server
     if (connect(remoteSocket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
-        cerr << "Failed to connect to server, error: " << WSAGetLastError() << '\n';
+        // cerr << "Failed to connect to server, error: " << WSAGetLastError() << '\n';
         closesocket(remoteSocket);
         return;
     }
     
+    // send respone to browser that connection had established
     string connect_response = "HTTP/1.1 200 Connection Established\r\n\r\n";
     int bytesSent = send(clientSocket, connect_response.c_str(), connect_response.size(), 0);
 
-    // Notify client connection established
     while (true) {
         fd_set readfds;
         FD_ZERO(&readfds);
@@ -102,7 +118,7 @@ void handleClient(SOCKET clientSocket, vector<string> ban) {
         struct timeval timeout = {10, 0}; // 10 seconds timeout
         int activity = select(max_fd, &readfds, nullptr, nullptr, &timeout);
         if (activity < 0) {
-            cerr << "Select error.\n";
+            // cerr << "Select error.\n";
             break;
         } else if (activity == 0) {
             // Timeout, check again
@@ -116,14 +132,12 @@ void handleClient(SOCKET clientSocket, vector<string> ban) {
         if (FD_ISSET(clientSocket, &readfds)) {
             bytes_read = recv(clientSocket, buffer, BUFFER_SIZE, 0);
             if (bytes_read <= 0) {
-                cerr << "Client disconnected or read error.\n";
+                // cerr << "Client disconnected or read error.\n";
                 break;
             }
-
-            // Forward data to server
             bytes_sent = send(remoteSocket, buffer, bytes_read, 0);
             if (bytes_sent <= 0) {
-                cerr << "Error sending data to server.\n";
+                // cerr << "Error sending data to server.\n";
                 break;
             }
         }
@@ -131,13 +145,12 @@ void handleClient(SOCKET clientSocket, vector<string> ban) {
         if (FD_ISSET(remoteSocket, &readfds)) {
             bytes_read = recv(remoteSocket, buffer, BUFFER_SIZE, 0);
             if (bytes_read <= 0) {
-                cerr << "Error reading data from server.\n";
+                // cerr << "Error reading data from server.\n";
                 break;
             }
-            // Forward data to client
             bytes_sent = send(clientSocket, buffer, bytes_read, 0);
             if (bytes_sent <= 0) {
-                cerr << "Error sending data to client.\n";
+                // cerr << "Error sending data to client.\n";
                 break;
             }
         }
@@ -148,28 +161,18 @@ void handleClient(SOCKET clientSocket, vector<string> ban) {
     closesocket(clientSocket);
 }
 
-vector<string> readBanFile(const string &file) {
-    vector<string> ban;
-    ifstream fi(file);
-    string s;
-    while(getline(fi, s)) {
-        ban.push_back(s);
-    }
-    // fi.close();
-    return ban;
-}
 int main() {
+    handleUI();
     vector<string> ban = readBanFile("ban.txt");
-    // for(string s: ban) cout << s << endl;
     WSADATA wsadata;
     if (WSAStartup(MAKEWORD(2, 2), &wsadata) != 0) {
-        cerr << "Winsock initialization failed!\n";
+        // cerr << "Winsock initialization failed!\n";
         return -1;
     }
 
     SOCKET proxyServer = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (proxyServer == INVALID_SOCKET) {
-        cerr << "Failed to create server socket, error: " << WSAGetLastError() << '\n';
+        // cerr << "Failed to create server socket, error: " << WSAGetLastError() << '\n';
         WSACleanup();
         return -1;
     }
@@ -180,14 +183,14 @@ int main() {
     proxyAddress.sin_port = htons(PORT);
 
     if (bind(proxyServer, (SOCKADDR*)&proxyAddress, sizeof(proxyAddress)) == SOCKET_ERROR) {
-        cerr << "Failed to bind socket, error: " << WSAGetLastError() << '\n';
+        // cerr << "Failed to bind socket, error: " << WSAGetLastError() << '\n';
         closesocket(proxyServer);
         WSACleanup();
         return -1;
     }
 
     if (listen(proxyServer, SOMAXCONN) == SOCKET_ERROR) {
-        cerr << "Failed to listen on socket, error: " << WSAGetLastError() << '\n';
+        // cerr << "Failed to listen on socket, error: " << WSAGetLastError() << '\n';
         closesocket(proxyServer);
         WSACleanup();
         return -1;
@@ -200,7 +203,7 @@ int main() {
         int client_len = sizeof(clientAddress);
         SOCKET clientSocket = accept(proxyServer, (SOCKADDR*)&clientAddress, &client_len);
         if (clientSocket == INVALID_SOCKET) {
-            cerr << "Failed to accept connection, error: " << WSAGetLastError() << '\n';
+            // cerr << "Failed to accept connection, error: " << WSAGetLastError() << '\n';
             continue;
         }
         cerr << "Accepted connection from client.\n";
