@@ -166,13 +166,13 @@ int main() {
     vector<string> ban = readBanFile("ban.txt");
     WSADATA wsadata;
     if (WSAStartup(MAKEWORD(2, 2), &wsadata) != 0) {
-        // cerr << "Winsock initialization failed!\n";
+        cerr << "Winsock initialization failed!\n";
         return -1;
     }
 
     SOCKET proxyServer = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (proxyServer == INVALID_SOCKET) {
-        // cerr << "Failed to create server socket, error: " << WSAGetLastError() << '\n';
+        cerr << "Failed to create server socket, error: " << WSAGetLastError() << '\n';
         WSACleanup();
         return -1;
     }
