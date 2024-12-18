@@ -1,2 +1,2 @@
-g++ server.cpp UI.cpp -o server -lws2_32
-.\server
+g++ UI.cpp prepare.cpp -o proxy -lws2_32
+.\proxy
