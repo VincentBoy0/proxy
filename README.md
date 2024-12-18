@@ -1,8 +1,8 @@
 # ----------PROXY------------
-CNTN23
-Subject: Computer Network
-Teacher: Đỗ Hoàng Cường
-Students:
-            23120002 - Trần Thế Bảo
-            23120142 - Đặng Thanh Long
-            23120002 - Đặng Minh Ánh
+CNTN23 <br>
+Subject: Computer Network <br>
+Teacher: Đỗ Hoàng Cường <br>
+Students: <br>
+            23120002 - Trần Thế Bảo <br>
+            23120142 - Đặng Thanh Long <br>
+            23120002 - Đặng Minh Ánh <br>
