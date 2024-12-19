@@ -152,12 +152,10 @@ void ProcessBlacklist(const char* blacklist, HWND hwnd, HWND hBlacklistView) {
 
     string blacklistData = blacklist;
 
-    // Split the blacklist into entries and update the List Box
     stringstream ss(blacklistData);
     string entry;
 
     while (getline(ss, entry, ',')) {
-        // Trim spaces from entries (optional)
         entry.erase(entry.find_last_not_of(" \t\n\r\f\v") + 1);
         entry.erase(0, entry.find_first_not_of(" \t\n\r\f\v"));
 
