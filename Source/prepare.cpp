@@ -17,15 +17,6 @@ bool checkBlackList(const string &request, const multiset<string> &ban) {
     }
     return false;
 }
-vector<string> readBanFile(const string &file) {
-    vector<string> ban;
-    ifstream fi(file);
-    string s;
-    while(getline(fi, s)) {
-        ban.push_back(s);
-    }
-    return ban;
-}
 
 // ------------------------Get Host and Port from HTTP/HTTPS request-----------------------//
 pair<string, int> get_Host_Port(string request) {
