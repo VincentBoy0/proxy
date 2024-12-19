@@ -4,13 +4,15 @@
 #include <iostream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <set>
 #include "prepare.h"
 using namespace std;
 bool isSubstring(const string &str1, const string &str2) {
     return str2.find(str1) != string::npos;
 }
-bool checkBanList(const string &request, const vector<string> &ban) {
-    for(string s: ban) { 
+bool checkBlackList(const string &request, const multiset<string> &ban) {
+    for(string s: ban) {
+        // string s = (*it); 
         if (isSubstring(s, request)) return true;        
     }
     return false;
@@ -51,6 +53,10 @@ pair<string, int> get_Host_Port(string request) {
         host = host.substr(0, pos);
     }
     return make_pair(host, port);
+}
+void printBlackList(const multiset<string>& blackList) {
+    cout << "Black List: \n";
+    for(string s: blackList) cout << s << endl;
 }
 // ---------------------Proxy server logic----------------------------------//
 bool createProxyServer(SOCKET &proxyServer, int port) {

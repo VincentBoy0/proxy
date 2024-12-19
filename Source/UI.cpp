@@ -6,11 +6,14 @@
 #include <thread>
 #include <vector>
 #include <iostream>
+#include <sstream>
+#include <set>
 #include "prepare.h"
 #pragma comment(lib, "ws2_32.lib")
 using namespace std;
 const char g_szClassName[] = "ProxyServerUI";
 const int BUFFER_SIZE = 4096;
+multiset<string> blackList;
 // -----------------------------UI controls----------------------------------------//
 HWND hStartButton, hStopButton, hPortEdit, hStatusText;
 
@@ -23,7 +26,7 @@ void UpdateStatus(const string& message) {
     SetWindowText(hStatusText, message.c_str());
 }
 
-void handleClient(SOCKET clientSocket, const vector<string>& ban) {
+void handleClient(SOCKET clientSocket, const multiset<string>& ban) {
     char buffer[BUFFER_SIZE];
     string request;
 
@@ -31,7 +34,7 @@ void handleClient(SOCKET clientSocket, const vector<string>& ban) {
     if (bytes_read <= 0) return;
 
     request = string(buffer, bytes_read);
-    if (checkBanList(request, ban)) return; 
+    if (checkBlackList(request, blackList)) return; 
     auto [host, port] = get_Host_Port(request);
 
     // Create socket to target server
@@ -94,7 +97,6 @@ void handleClient(SOCKET clientSocket, const vector<string>& ban) {
     closesocket(clientSocket);
 }
 void ProxyServer(unsigned short port) {
-    vector<string> ban = readBanFile("ban.txt");
     UpdateStatus("Proxy server is listening on port " + to_string(port));
 
     while (isRunning) {
@@ -103,7 +105,7 @@ void ProxyServer(unsigned short port) {
         SOCKET clientSocket = accept(proxyServer, (SOCKADDR*)&clientAddress, &client_len);
         if (clientSocket == INVALID_SOCKET) continue;
 
-        handleClient(clientSocket, ban);
+        handleClient(clientSocket, blackList);
         closesocket(clientSocket);
     }
 
@@ -142,8 +144,54 @@ void StopProxy() {
     closesocket(proxyServer);
 }
 
+void ProcessBlacklist(const char* blacklist, HWND hwnd, HWND hBlacklistView) {
+    if (strlen(blacklist) == 0) {
+        MessageBox(hwnd, "Blacklist cannot be empty.", "Error", MB_ICONERROR);
+        return;
+    }
+
+    string blacklistData = blacklist;
+
+    // Split the blacklist into entries and update the List Box
+    stringstream ss(blacklistData);
+    string entry;
+
+    while (getline(ss, entry, ',')) {
+        // Trim spaces from entries (optional)
+        entry.erase(entry.find_last_not_of(" \t\n\r\f\v") + 1);
+        entry.erase(0, entry.find_first_not_of(" \t\n\r\f\v"));
+
+        if (!entry.empty()) {
+            SendMessage(hBlacklistView, LB_ADDSTRING, 0, (LPARAM)entry.c_str());
+            blackList.insert(entry);
+        }
+    }
+    // Clear the blacklist edit box after submission
+    SetWindowText(hwnd, "");
+    MessageBox(hwnd, "Blacklist submitted successfully!", "Info", MB_ICONINFORMATION);
+}
+void DeleteBlacklistItem(HWND hBlacklistView, HWND hwnd) {
+    // Get the selected item index
+    int selectedIndex = SendMessage(hBlacklistView, LB_GETCURSEL, 0, 0);
+    if (selectedIndex == LB_ERR) {
+        MessageBox(hwnd, "Please select an item to delete.", "Error", MB_ICONERROR);
+        return;
+    }
+    char selectedText[256];  // Buffer to hold the text
+    SendMessage(hBlacklistView, LB_GETTEXT, selectedIndex, (LPARAM)selectedText);
+
+    blackList.erase(blackList.find(selectedText));
+
+    // Remove the selected item from the List Box
+    SendMessage(hBlacklistView, LB_DELETESTRING, selectedIndex, 0);
+
+    MessageBox(hwnd, "Selected item deleted successfully!", "Info", MB_ICONINFORMATION);
+}
+
 // -----------------------Window procedure function-----------------------------------------//
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    static HWND hBlacklistEdit, hSubmitButton, hBlacklistView, hDeleteButton;
+
     switch (msg) {
     case WM_CREATE:
         // Create UI elements
@@ -154,6 +202,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         hStopButton = CreateWindow("BUTTON", "Stop", WS_CHILD | WS_VISIBLE, 290, 20, 80, 30, hwnd, (HMENU)2, NULL, NULL);
 
         hStatusText = CreateWindow("STATIC", "Status: Idle", WS_CHILD | WS_VISIBLE, 20, 60, 350, 20, hwnd, NULL, NULL, NULL);
+
+        // Add blacklist input box and submit button
+        CreateWindow("STATIC", "Blacklist:", WS_CHILD | WS_VISIBLE, 20, 100, 70, 20, hwnd, NULL, NULL, NULL);
+        hBlacklistEdit = CreateWindow("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER, 100, 100, 200, 20, hwnd, NULL, NULL, NULL);
+
+        hSubmitButton = CreateWindow("BUTTON", "Submit", WS_CHILD | WS_VISIBLE, 320, 100, 80, 30, hwnd, (HMENU)3, NULL, NULL);
+
+        // Add a list box to view the blacklist
+        hBlacklistView = CreateWindow("LISTBOX", "", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY, 20, 140, 380, 150, hwnd, NULL, NULL, NULL);
+
+        // Add a delete button to remove items from the blacklist
+        hDeleteButton = CreateWindow("BUTTON", "Delete", WS_CHILD | WS_VISIBLE, 320, 300, 80, 30, hwnd, (HMENU)4, NULL, NULL);
         break;
 
     case WM_COMMAND:
@@ -162,6 +222,14 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         else if (LOWORD(wParam) == 2) { // Stop button
             StopProxy();
+        }
+        else if (LOWORD(wParam) == 3) { // Submit blacklist button
+            char blacklistBuffer[256];
+            GetWindowText(hBlacklistEdit, blacklistBuffer, sizeof(blacklistBuffer));
+            ProcessBlacklist(blacklistBuffer, hwnd, hBlacklistView);
+        }
+        else if (LOWORD(wParam) == 4) { // Delete blacklist item button
+            DeleteBlacklistItem(hBlacklistView, hwnd);
         }
         break;
 
@@ -175,6 +243,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     }
     return 0;
 }
+
 
 // ------------------------------------Entry point----------------------------------//
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
@@ -207,7 +276,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         g_szClassName,
         "Proxy Server UI",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 400, 150,
+        CW_USEDEFAULT, CW_USEDEFAULT, 450, 400,
         NULL, NULL, hInstance, NULL);
 
     if (hwnd == NULL) {
