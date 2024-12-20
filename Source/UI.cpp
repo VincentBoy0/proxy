@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <commctrl.h>
+#include <mutex>
 #include <set>
 #include "prepare.h"
 #pragma comment(lib, "ws2_32.lib")
@@ -28,7 +29,6 @@ void UpdateStatus(const string& message) {
 }
 // Function to add entries to individual list boxes
 void AddRequestToListBoxes(HWND hMethodList, HWND hHostList, HWND hPortList, const std::string& method, const std::string& host, int port) {
-    cerr << host << ' ' << port << endl;
     SendMessage(hMethodList, LB_ADDSTRING, 0, (LPARAM)method.c_str());
     SendMessage(hHostList, LB_ADDSTRING, 0, (LPARAM)host.c_str());
 
@@ -36,7 +36,6 @@ void AddRequestToListBoxes(HWND hMethodList, HWND hHostList, HWND hPortList, con
     snprintf(portBuffer, sizeof(portBuffer), "%d", port);
     SendMessage(hPortList, LB_ADDSTRING, 0, (LPARAM)portBuffer);
 }
-
 
 void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethodList, HWND hHostList, HWND hPortList) {
     char buffer[BUFFER_SIZE];
@@ -49,12 +48,10 @@ void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethod
     if (checkBlackList(request, blackList)) return; 
     auto [host, port] = get_Host_Port(request);
     AddRequestToListBoxes(hMethodList, hHostList, hPortList, "GET", host, port);
-    // Create socket to target server
+    
     SOCKET remoteSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (remoteSocket == INVALID_SOCKET) return;
 
-
-    // ------------------Change host name to IP address------------------------------
     struct hostent* he = gethostbyname(host.c_str());
     if (he == nullptr) {
         closesocket(remoteSocket);
@@ -71,7 +68,6 @@ void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethod
         return;
     }
     
-    //-------------- send respone to browser that connection had established---------------------//
     string connect_response = "HTTP/1.1 200 Connection Established\r\n\r\n";
     int bytesSent = send(clientSocket, connect_response.c_str(), connect_response.size(), 0);
 
@@ -82,7 +78,7 @@ void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethod
         FD_SET(remoteSocket, &readfds);
 
         int max_fd = max(clientSocket, remoteSocket) + 1;
-        struct timeval timeout = {10, 0}; // 10 seconds timeout
+        struct timeval timeout = {5, 0}; // Timeout 10 seconds
         int activity = select(max_fd, &readfds, nullptr, nullptr, &timeout);
         if (activity < 0) break;
         else if (activity == 0) continue;
@@ -104,7 +100,6 @@ void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethod
         }
     }
 
-    // -----------------------------------Clean up-------------------------------------//
     closesocket(remoteSocket);
     closesocket(clientSocket);
 }
@@ -117,14 +112,16 @@ void ProxyServer(unsigned short port, HWND hMethodListBox, HWND hHostListBox, HW
         SOCKET clientSocket = accept(proxyServer, (SOCKADDR*)&clientAddress, &client_len);
         if (clientSocket == INVALID_SOCKET) continue;
 
-        handleClient(clientSocket, blackList, hMethodListBox, hHostListBox, hPortListBox);
-        closesocket(clientSocket);
+        thread clientThread(handleClient, clientSocket, blackList, hMethodListBox, hHostListBox, hPortListBox);
+        
+        clientThread.detach();
     }
 
     closesocket(proxyServer);
     WSACleanup();
     UpdateStatus("Proxy server stopped.");
 }
+
 
 void StartProxy(HWND hwnd, HWND hMethodListBox, HWND hHostListBox, HWND hPortListBox) {
     if (isRunning) {
