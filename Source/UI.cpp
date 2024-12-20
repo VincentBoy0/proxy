@@ -7,6 +7,7 @@
 #include <vector>
 #include <iostream>
 #include <sstream>
+#include <commctrl.h>
 #include <set>
 #include "prepare.h"
 #pragma comment(lib, "ws2_32.lib")
@@ -25,8 +26,19 @@ thread proxyThread;
 void UpdateStatus(const string& message) {
     SetWindowText(hStatusText, message.c_str());
 }
+// Function to add entries to individual list boxes
+void AddRequestToListBoxes(HWND hMethodList, HWND hHostList, HWND hPortList, const std::string& method, const std::string& host, int port) {
+    cerr << host << ' ' << port << endl;
+    SendMessage(hMethodList, LB_ADDSTRING, 0, (LPARAM)method.c_str());
+    SendMessage(hHostList, LB_ADDSTRING, 0, (LPARAM)host.c_str());
 
-void handleClient(SOCKET clientSocket, const multiset<string>& ban) {
+    char portBuffer[10];
+    snprintf(portBuffer, sizeof(portBuffer), "%d", port);
+    SendMessage(hPortList, LB_ADDSTRING, 0, (LPARAM)portBuffer);
+}
+
+
+void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethodList, HWND hHostList, HWND hPortList) {
     char buffer[BUFFER_SIZE];
     string request;
 
@@ -36,7 +48,7 @@ void handleClient(SOCKET clientSocket, const multiset<string>& ban) {
     request = string(buffer, bytes_read);
     if (checkBlackList(request, blackList)) return; 
     auto [host, port] = get_Host_Port(request);
-
+    AddRequestToListBoxes(hMethodList, hHostList, hPortList, "GET", host, port);
     // Create socket to target server
     SOCKET remoteSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (remoteSocket == INVALID_SOCKET) return;
@@ -96,7 +108,7 @@ void handleClient(SOCKET clientSocket, const multiset<string>& ban) {
     closesocket(remoteSocket);
     closesocket(clientSocket);
 }
-void ProxyServer(unsigned short port) {
+void ProxyServer(unsigned short port, HWND hMethodListBox, HWND hHostListBox, HWND hPortListBox) {
     UpdateStatus("Proxy server is listening on port " + to_string(port));
 
     while (isRunning) {
@@ -105,7 +117,7 @@ void ProxyServer(unsigned short port) {
         SOCKET clientSocket = accept(proxyServer, (SOCKADDR*)&clientAddress, &client_len);
         if (clientSocket == INVALID_SOCKET) continue;
 
-        handleClient(clientSocket, blackList);
+        handleClient(clientSocket, blackList, hMethodListBox, hHostListBox, hPortListBox);
         closesocket(clientSocket);
     }
 
@@ -114,7 +126,7 @@ void ProxyServer(unsigned short port) {
     UpdateStatus("Proxy server stopped.");
 }
 
-void StartProxy(HWND hwnd) {
+void StartProxy(HWND hwnd, HWND hMethodListBox, HWND hHostListBox, HWND hPortListBox) {
     if (isRunning) {
         MessageBox(hwnd, "Proxy is already running!", "Info", MB_OK | MB_ICONINFORMATION);
         return;
@@ -130,7 +142,7 @@ void StartProxy(HWND hwnd) {
     }
 
     createProxyServer(proxyServer, port);
-    proxyThread = thread(ProxyServer, port);
+    proxyThread = thread(ProxyServer, port, hMethodListBox, hHostListBox, hPortListBox);
     proxyThread.detach();
 }
 
@@ -189,6 +201,7 @@ void DeleteBlacklistItem(HWND hBlacklistView, HWND hwnd) {
 // -----------------------Window procedure function-----------------------------------------//
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     static HWND hBlacklistEdit, hSubmitButton, hBlacklistView, hDeleteButton;
+    static HWND hMethodListBox, hHostListBox, hPortListBox;
 
     switch (msg) {
     case WM_CREATE:
@@ -201,25 +214,37 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
         hStatusText = CreateWindow("STATIC", "Status: Idle", WS_CHILD | WS_VISIBLE, 20, 60, 350, 20, hwnd, NULL, NULL, NULL);
 
-        // Add blacklist input box and submit button
-        CreateWindow("STATIC", "Blacklist:", WS_CHILD | WS_VISIBLE, 20, 100, 70, 20, hwnd, NULL, NULL, NULL);
-        hBlacklistEdit = CreateWindow("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER, 100, 100, 200, 20, hwnd, NULL, NULL, NULL);
+        // Create list boxes for method, host, and port
+        CreateWindow("STATIC", "Method", WS_CHILD | WS_VISIBLE, 20, 100, 110, 20, hwnd, NULL, NULL, NULL);
+        hMethodListBox = CreateWindow("LISTBOX", "", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY, 20, 120, 110, 150, hwnd, NULL, NULL, NULL);
 
-        hSubmitButton = CreateWindow("BUTTON", "Submit", WS_CHILD | WS_VISIBLE, 320, 100, 80, 30, hwnd, (HMENU)3, NULL, NULL);
+        CreateWindow("STATIC", "Host", WS_CHILD | WS_VISIBLE, 130, 100, 170, 20, hwnd, NULL, NULL, NULL);
+        hHostListBox = CreateWindow("LISTBOX", "", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY, 130, 120, 170, 150, hwnd, NULL, NULL, NULL);
 
-        // Add a list box to view the blacklist
-        hBlacklistView = CreateWindow("LISTBOX", "", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY, 20, 140, 380, 150, hwnd, NULL, NULL, NULL);
+        CreateWindow("STATIC", "Port", WS_CHILD | WS_VISIBLE, 300, 100, 80, 20, hwnd, NULL, NULL, NULL);
+        hPortListBox = CreateWindow("LISTBOX", "", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY, 300, 120, 80, 150, hwnd, NULL, NULL, NULL);
 
-        // Add a delete button to remove items from the blacklist
-        hDeleteButton = CreateWindow("BUTTON", "Delete", WS_CHILD | WS_VISIBLE, 320, 300, 80, 30, hwnd, (HMENU)4, NULL, NULL);
+        // Blacklist input and list
+        CreateWindow("STATIC", "Blacklist:", WS_CHILD | WS_VISIBLE, 20, 290, 80, 20, hwnd, NULL, NULL, NULL);
+        hBlacklistEdit = CreateWindow("EDIT", "", WS_CHILD | WS_VISIBLE | WS_BORDER, 100, 290, 180, 20, hwnd, NULL, NULL, NULL);
+
+        hSubmitButton = CreateWindow("BUTTON", "Submit", WS_CHILD | WS_VISIBLE, 300, 290, 70, 30, hwnd, (HMENU)3, NULL, NULL);
+
+        hBlacklistView = CreateWindow("LISTBOX", "", WS_CHILD | WS_VISIBLE | WS_BORDER | LBS_NOTIFY, 20, 330, 365, 150, hwnd, NULL, NULL, NULL);
+        hDeleteButton = CreateWindow("BUTTON", "Delete", WS_CHILD | WS_VISIBLE, 300, 490, 80, 30, hwnd, (HMENU)4, NULL, NULL);
         break;
 
     case WM_COMMAND:
         if (LOWORD(wParam) == 1) { // Start button
-            StartProxy(hwnd);
+            StartProxy(hwnd, hMethodListBox, hHostListBox, hPortListBox);
         }
         else if (LOWORD(wParam) == 2) { // Stop button
             StopProxy();
+
+            // Clear all list boxes
+            SendMessage(hMethodListBox, LB_RESETCONTENT, 0, 0);
+            SendMessage(hHostListBox, LB_RESETCONTENT, 0, 0);
+            SendMessage(hPortListBox, LB_RESETCONTENT, 0, 0);
         }
         else if (LOWORD(wParam) == 3) { // Submit blacklist button
             char blacklistBuffer[256];
@@ -274,7 +299,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         g_szClassName,
         "Proxy Server UI",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 450, 400,
+        CW_USEDEFAULT, CW_USEDEFAULT, 430, 570,
         NULL, NULL, hInstance, NULL);
 
     if (hwnd == NULL) {
