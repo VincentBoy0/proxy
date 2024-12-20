@@ -239,9 +239,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             StopProxy();
 
             // Clear all list boxes
-            SendMessage(hMethodListBox, LB_RESETCONTENT, 0, 0);
-            SendMessage(hHostListBox, LB_RESETCONTENT, 0, 0);
-            SendMessage(hPortListBox, LB_RESETCONTENT, 0, 0);
+            // SendMessage(hMethodListBox, LB_RESETCONTENT, 0, 0);
+            // SendMessage(hHostListBox, LB_RESETCONTENT, 0, 0);
+            // SendMessage(hPortListBox, LB_RESETCONTENT, 0, 0);
         }
         else if (LOWORD(wParam) == 3) { // Submit blacklist button
             char blacklistBuffer[256];
