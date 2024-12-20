@@ -9,7 +9,7 @@ using namespace std;
 // Function declarations
 bool isSubstring(const string &str1, const string &str2);
 bool checkBlackList(const string &request, const multiset<string> &ban);
-pair<string, int> get_Host_Port(string request);
+tuple<string, string, int> get_Host_Port(const string& request);
 void printBlackList(const multiset<string>& blackList);
 bool createProxyServer(SOCKET &proxyServer, int port);
 

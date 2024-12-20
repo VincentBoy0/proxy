@@ -29,12 +29,11 @@ void UpdateStatus(const string& message) {
 }
 // Function to add entries to individual list boxes
 void AddRequestToListBoxes(HWND hMethodList, HWND hHostList, HWND hPortList, const std::string& method, const std::string& host, int port) {
-    SendMessage(hMethodList, LB_ADDSTRING, 0, (LPARAM)method.c_str());
-    SendMessage(hHostList, LB_ADDSTRING, 0, (LPARAM)host.c_str());
-
+    SendMessage(hMethodList, LB_INSERTSTRING, 0, (LPARAM)method.c_str());
+    SendMessage(hHostList, LB_INSERTSTRING, 0, (LPARAM)host.c_str());
     char portBuffer[10];
     snprintf(portBuffer, sizeof(portBuffer), "%d", port);
-    SendMessage(hPortList, LB_ADDSTRING, 0, (LPARAM)portBuffer);
+    SendMessage(hPortList, LB_INSERTSTRING, 0, (LPARAM)portBuffer);
 }
 
 void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethodList, HWND hHostList, HWND hPortList) {
@@ -46,8 +45,8 @@ void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethod
 
     request = string(buffer, bytes_read);
     if (checkBlackList(request, blackList)) return; 
-    auto [host, port] = get_Host_Port(request);
-    AddRequestToListBoxes(hMethodList, hHostList, hPortList, "GET", host, port);
+    auto [method, host, port] = get_Host_Port(request);
+    AddRequestToListBoxes(hMethodList, hHostList, hPortList, method, host, port);
     
     SOCKET remoteSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (remoteSocket == INVALID_SOCKET) return;
@@ -78,7 +77,7 @@ void handleClient(SOCKET clientSocket, const multiset<string>& ban, HWND hMethod
         FD_SET(remoteSocket, &readfds);
 
         int max_fd = max(clientSocket, remoteSocket) + 1;
-        struct timeval timeout = {5, 0}; // Timeout 10 seconds
+        struct timeval timeout = {5, 0}; // Timeout 5 seconds
         int activity = select(max_fd, &readfds, nullptr, nullptr, &timeout);
         if (activity < 0) break;
         else if (activity == 0) continue;
@@ -237,11 +236,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         }
         else if (LOWORD(wParam) == 2) { // Stop button
             StopProxy();
-
-            // Clear all list boxes
-            // SendMessage(hMethodListBox, LB_RESETCONTENT, 0, 0);
-            // SendMessage(hHostListBox, LB_RESETCONTENT, 0, 0);
-            // SendMessage(hPortListBox, LB_RESETCONTENT, 0, 0);
         }
         else if (LOWORD(wParam) == 3) { // Submit blacklist button
             char blacklistBuffer[256];
@@ -257,7 +251,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         StopProxy(); // Ensure the proxy stops when the window closes
         PostQuitMessage(0);
         break;
-
+    case WM_ACTIVATE:
+        if (LOWORD(wParam) == WA_INACTIVE) {
+            ShowWindow(hwnd, SW_RESTORE);
+        }
+        break;
     default:
         return DefWindowProc(hwnd, msg, wParam, lParam);
     }

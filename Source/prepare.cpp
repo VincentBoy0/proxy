@@ -5,6 +5,7 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <set>
+#include <tuple>
 #include "prepare.h"
 using namespace std;
 bool isSubstring(const string &str1, const string &str2) {
@@ -12,38 +13,44 @@ bool isSubstring(const string &str1, const string &str2) {
 }
 bool checkBlackList(const string &request, const multiset<string> &ban) {
     for(string s: ban) {
-        // string s = (*it); 
         if (isSubstring(s, request)) return true;        
     }
     return false;
 }
 
 // ------------------------Get Host and Port from HTTP/HTTPS request-----------------------//
-pair<string, int> get_Host_Port(string request) {
+tuple<string, string, int> get_Host_Port(const string& request) {
     string first_line = request.substr(0, request.find("\r\n"));
     string method = first_line.substr(0, first_line.find(" "));
     string url = first_line.substr(first_line.find(" ") + 1);
     string protocol = first_line.substr(first_line.rfind(" ") + 1);
     string host;
-    int port = 80;
+    int port = 80;  // Default port
+
+    // Remove protocol if present
     size_t pos = url.find("://");
-    if (pos != std::string::npos) {
-        url = url.substr(pos + 3); // Remove protocol
+    if (pos != string::npos) {
+        url = url.substr(pos + 3);  // Remove protocol (e.g., "http://")
     }
+
+    // Find the host and port
     pos = url.find('/');
-    if (pos != std::string::npos) {
-        host = url.substr(0, pos);
-        url = url.substr(pos);
+    if (pos != string::npos) {
+        host = url.substr(0, pos);  // Extract host
+        url = url.substr(pos);      // Remaining part of the URL (after host)
     } else {
-        host = url;
+        host = url;  // If no '/', the entire url is the host
         url = "/";
     }
+
+    // Extract port if available
     pos = host.find(':');
     if (pos != string::npos) {
-        port = std::stoi(host.substr(pos + 1));
-        host = host.substr(0, pos);
+        port = stoi(host.substr(pos + 1));  // Extract port after ':'
+        host = host.substr(0, pos);               // Remove port from host
     }
-    return make_pair(host, port);
+
+    return make_tuple(method, host, port);
 }
 void printBlackList(const multiset<string>& blackList) {
     cout << "Black List: \n";
